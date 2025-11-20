@@ -2,6 +2,7 @@ package com.Task.Manager.configue;
 
 import com.Task.Manager.repository.UserRepository;
 import com.Task.Manager.security.JwtAuthFilter;
+import com.Task.Manager.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,7 +15,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -25,11 +25,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
+    // remove JwtAuthFilter injection to break circular dependency
+    private final JwtService jwtService;
     private final UserRepository userRepository;
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception{
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        // Instantiate the filter here (no @Component on JwtAuthFilter)
+        JwtAuthFilter jwtAuthFilter = new JwtAuthFilter(jwtService, userDetailsService());
+
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
@@ -41,13 +45,14 @@ public class SecurityConfig {
                 )
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+
         return http.build();
     }
 
     @Bean
-    public UserDetailsService userDetailsService(){
+    public UserDetailsService userDetailsService() {
         return username -> userRepository.findByUsername(username)
-                .orElseThrow() -> new UsernameNotFoundException("user not found");
+                .orElseThrow(() -> new UsernameNotFoundException("user not found"));
     }
 
     @Bean
@@ -63,7 +68,9 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception{
+    // expose AuthenticationManager as a bean (useful for login endpoints)
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 }
